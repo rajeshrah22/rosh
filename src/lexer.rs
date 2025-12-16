@@ -30,6 +30,7 @@ pub enum TokenType {
     Lparen,
     Rparen,
     Err,
+    None,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -38,6 +39,17 @@ pub struct Token {
     pub lexeme: String,
     pub literal: Literal,
     pub line: usize,
+}
+
+impl Token {
+    pub fn empty_token() -> Self {
+        Self {
+            token_type: TokenType::None,
+            lexeme: "".to_string(),
+            literal: Literal::None,
+            line: 0,
+        }
+    }
 }
 
 pub struct Lexer<'source> {
@@ -244,7 +256,12 @@ impl<'source> Iterator for Lexer<'source> {
             };
             token
         } else {
-            None
+            Some(Token {
+                token_type: TokenType::Eof,
+                lexeme: "".to_string(),
+                literal: Literal::None,
+                line: self.line,
+            })
         }
     }
 }
