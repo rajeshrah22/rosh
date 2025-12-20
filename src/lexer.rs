@@ -91,7 +91,6 @@ impl<'source> Lexer<'source> {
         self.source.chars().nth(self.curr)
     }
 
-    // TODO
     fn yield_whitespace(&mut self) -> Token {
         self.take_while(|c| c == ' ' || c == '\t');
         Token {
@@ -172,7 +171,6 @@ impl<'source> Lexer<'source> {
         }
     }
 
-    // TODO
     fn yield_word(&mut self) -> Result<Token, String> {
         let p = |c: char| match c {
             '(' | ')' | '<' | '>' | ';' | '|' | '\n' | ' ' | '\t' => false,
@@ -205,63 +203,58 @@ impl<'source> Iterator for Lexer<'source> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if !self.is_at_end() {
-            self.start = self.curr;
-            let character = self.advance();
-            let token = if let Some(character) = character {
-                match character {
-                    // special characters
-                    '(' => Some(self.yield_token(TokenType::Lparen)),
-                    ')' => Some(self.yield_token(TokenType::Rparen)),
-                    '<' => Some(self.yield_token(TokenType::RedirectIn)),
-                    '>' => {
-                        if self.char_matches(character) {
-                            Some(self.yield_token(TokenType::RedirectOutAppend))
-                        } else {
-                            Some(self.yield_token(TokenType::RedirectOut))
-                        }
-                    }
-                    '&' => Some(self.yield_token(TokenType::Async)),
-                    ';' => Some(self.yield_token(TokenType::Semicolon)),
-                    '|' => Some(self.yield_token(TokenType::Pipe)),
-                    '\n' => {
-                        let newline_token = self.yield_token(TokenType::Nl);
-                        self.line += 1;
-                        Some(newline_token)
-                    }
-                    '"' => {
-                        let res = self.yield_string(character);
-                        self.token_from_result(res)
-                    }
-                    '\'' => {
-                        let res = self.yield_string(character);
-                        self.token_from_result(res)
-                    }
-                    ' ' => Some(self.yield_whitespace()),
-                    '\t' => Some(self.yield_whitespace()),
+        if self.is_at_end() {
+            return None;
+        }
 
-                    // word
-                    _ => {
-                        let res = self.yield_word();
-                        self.token_from_result(res)
+        self.start = self.curr;
+        let character = self.advance();
+        let token = if let Some(character) = character {
+            match character {
+                // special characters
+                '(' => self.yield_token(TokenType::Lparen),
+                ')' => self.yield_token(TokenType::Rparen),
+                '<' => self.yield_token(TokenType::RedirectIn),
+                '>' => {
+                    if self.char_matches(character) {
+                        self.yield_token(TokenType::RedirectOutAppend)
+                    } else {
+                        self.yield_token(TokenType::RedirectOut)
                     }
                 }
-            } else {
-                Some(Token {
-                    token_type: TokenType::Err,
-                    lexeme: "".to_string(),
-                    literal: Literal::None,
-                    line: self.line,
-                })
-            };
-            token
+                '&' => self.yield_token(TokenType::Async),
+                ';' => self.yield_token(TokenType::Semicolon),
+                '|' => self.yield_token(TokenType::Pipe),
+                '\n' => {
+                    let newline_token = self.yield_token(TokenType::Nl);
+                    self.line += 1;
+                    newline_token
+                }
+                '"' => {
+                    let res = self.yield_string(character);
+                    self.token_from_result(res).unwrap()
+                }
+                '\'' => {
+                    let res = self.yield_string(character);
+                    self.token_from_result(res).unwrap()
+                }
+                ' ' => self.yield_whitespace(),
+                '\t' => self.yield_whitespace(),
+
+                // word
+                _ => {
+                    let res = self.yield_word();
+                    self.token_from_result(res).unwrap()
+                }
+            }
         } else {
-            Some(Token {
+            Token {
                 token_type: TokenType::Eof,
                 lexeme: "".to_string(),
                 literal: Literal::None,
                 line: self.line,
-            })
-        }
+            }
+        };
+        Some(token)
     }
 }

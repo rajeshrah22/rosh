@@ -24,27 +24,34 @@
 //
 // We also support pipes:
 // git log --oneline --author=rajeshrah22 | wc -l
+#[derive(Debug)]
 pub struct Program {
     pub statements: Vec<Statement>,
 }
 
+#[derive(Debug)]
 pub struct Statement {
     pub pipeline: Commands,
 }
 
+#[derive(Debug)]
 pub struct Commands {
     pub commands: Vec<Command>,
 }
 
+// TODO: or Redirects?
+#[derive(Debug)]
 pub struct Command {
     pub argv: Vec<String>,
-    pub redirects: Vec<Redirect>,
+    pub redirect: Redirect,
 }
 
+#[derive(Debug)]
 pub enum Redirect {
     In(String),
     Out(String),
     OutAppend(String),
+    None,
 }
 
 impl Program {
@@ -75,7 +82,9 @@ impl Command {
     pub fn new() -> Self {
         Self {
             argv: Vec::new(),
-            redirects: Vec::new(),
+            // TODO: Is a none type in enum bad practice?
+            // Should I make redirect Option<Redirect> type instead?
+            redirect: Redirect::None,
         }
     }
 }
