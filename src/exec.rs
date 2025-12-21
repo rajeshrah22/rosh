@@ -9,7 +9,7 @@ pub struct Executor {
 impl Executor {
     pub fn new() -> Self {
         Self {
-            name: "Hello".to_string(),
+            name: "Exec not unimplemented".to_string(),
         }
     }
 

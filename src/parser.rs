@@ -32,13 +32,14 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             if let Ok(val) = stmt {
                 program.statements.push(val);
             } else if let Err(e) = stmt {
-                println!("{}", e.as_str());
+                return Err(e);
             }
         }
 
         return Ok(program);
     }
 
+    // consumes token if match with any types in token_types
     fn match_token(&mut self, token_types: Vec<TokenType>) -> bool {
         for token_type in token_types {
             if self.check(token_type) {
@@ -52,7 +53,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     fn skip_ignored(&mut self) {
         while let Some(t) = self.tokens.peek() {
             if TO_IGNORE.contains(&t.token_type) {
-                self.tokens.next();
+                self.advance();
             } else {
                 break;
             }
@@ -64,8 +65,6 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         matches!(self.tokens.peek(), Some(t) if t.token_type == token_type)
     }
 
-    // Match format:
-    // [Pipeline] [seperator]
     fn statement(&mut self) -> Result<Statement, String> {
         let mut statement = Statement::new();
         while !self.at_end() {
@@ -106,26 +105,6 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             match peek_val.token_type {
                 TokenType::Pipe | TokenType::Semicolon | TokenType::Nl | TokenType::Async => break,
                 TokenType::Word | TokenType::StringLiteral => {
-                    if let Some(val) = self.processed_tokens.last() {
-                        match val.token_type {
-                            TokenType::RedirectOut => {
-                                command.redirect = Redirect::Out(peek_val.lexeme.clone());
-                                self.advance();
-                                continue;
-                            }
-                            TokenType::RedirectOutAppend => {
-                                command.redirect = Redirect::OutAppend(peek_val.lexeme.clone());
-                                self.advance();
-                                continue;
-                            }
-                            TokenType::RedirectIn => {
-                                command.redirect = Redirect::In(peek_val.lexeme.clone());
-                                self.advance();
-                                continue;
-                            }
-                            _ => {}
-                        }
-                    }
                     command.argv.push(peek_val.lexeme.clone());
                     self.advance();
                 }
@@ -134,13 +113,12 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     if self.at_end() {
                         return Err("Empty output file".to_string());
                     }
-                    if let Some(peek_val) = self.tokens.peek()
-                        && !(peek_val.token_type == TokenType::Word
-                            || peek_val.token_type == TokenType::StringLiteral)
-                    {
-                        return Err(
-                            "Syntax error near [yeah parser errors are not there yet]".to_string()
-                        );
+                    let val = self.match_token(vec![TokenType::Word, TokenType::StringLiteral]);
+                    let tok = self.processed_tokens.last();
+                    if !val {
+                        return Err("Syntax error near RedirectOut".to_string());
+                    } else if let Some(tok) = tok {
+                        command.redirect = Redirect::Out(tok.lexeme.clone());
                     }
                 }
                 TokenType::RedirectOutAppend => {
@@ -148,18 +126,28 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                     if self.at_end() {
                         return Err("Empty output file".to_string());
                     }
-                    if let Some(peek_val) = self.tokens.peek()
-                        && !(peek_val.token_type != TokenType::Word
-                            || peek_val.token_type != TokenType::StringLiteral)
-                    {
-                        return Err(
-                            "Syntax error near [yeah parser errors are not there yet]".to_string()
-                        );
+                    let val = self.match_token(vec![TokenType::Word, TokenType::StringLiteral]);
+                    let tok = self.processed_tokens.last();
+                    if !val {
+                        return Err("Syntax error near RedirectOut".to_string());
+                    } else if let Some(tok) = tok {
+                        command.redirect = Redirect::OutAppend(tok.lexeme.clone());
                     }
                 }
                 TokenType::RedirectIn => {
                     if command.argv.is_empty() {
                         return Err("Empty command list and redirect in".to_string());
+                    }
+                    self.advance();
+                    if self.at_end() {
+                        return Err("Empty input file".to_string());
+                    }
+                    let val = self.match_token(vec![TokenType::Word, TokenType::StringLiteral]);
+                    let tok = self.processed_tokens.last();
+                    if !val {
+                        return Err("Syntax error near RedirectOut".to_string());
+                    } else if let Some(tok) = tok {
+                        command.redirect = Redirect::In(tok.lexeme.clone());
                     }
                 }
                 TokenType::Whitespace | TokenType::Lparen | TokenType::Rparen => {
@@ -183,7 +171,6 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         None
     }
 
-    // TODO: How does this actually work?
     fn at_end(&mut self) -> bool {
         matches!(
             self.tokens.peek(),

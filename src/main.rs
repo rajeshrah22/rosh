@@ -25,6 +25,10 @@ fn main() -> std::io::Result<()> {
             return Ok(());
         }
 
+        if bytes_read == 1 {
+            continue;
+        }
+
         let lex = Lexer::lex(buffer.as_str());
         let mut parse = Parser::new(lex);
         let ast = parse.parse();
@@ -33,10 +37,8 @@ fn main() -> std::io::Result<()> {
             let ast = ast.unwrap();
             dbg!(&ast);
             executor.exec(&ast);
-        }
-
-        if bytes_read == 1 {
-            continue;
+        } else if let Err(e) = ast {
+            println!("{}", e.as_str());
         }
     }
 }
