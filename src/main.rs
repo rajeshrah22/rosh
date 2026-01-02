@@ -35,7 +35,6 @@ fn main() -> std::io::Result<()> {
         let executor = Executor::new();
         if ast.is_ok() {
             let ast = ast.unwrap();
-            dbg!(&ast);
             executor.exec(&ast);
         } else if let Err(e) = ast {
             println!("{}", e.as_str());
