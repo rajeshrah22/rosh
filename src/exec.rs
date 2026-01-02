@@ -4,6 +4,7 @@
 // TODO: What type should Error be? How to return the error code from a execvp function?
 // TODO: convert other iterative code to more rust idiomatic code.
 // TODO: Fix warnings
+// TODO: Rust method vs function
 use nix::fcntl::OFlag;
 use nix::fcntl::open;
 use nix::sys::stat::Mode;
@@ -54,7 +55,7 @@ fn apply_redirect(r: &Redirect) -> Result<(), nix::Error> {
             let fd = open(
                 path.as_c_str(),
                 OFlag::O_WRONLY | OFlag::O_CREAT,
-                Mode::S_IWUSR,
+                Mode::S_IWUSR | Mode::S_IRUSR,
             )
             .unwrap();
             dup2_stdout(&fd)?;
@@ -66,7 +67,7 @@ fn apply_redirect(r: &Redirect) -> Result<(), nix::Error> {
             let fd = open(
                 path.as_c_str(),
                 OFlag::O_APPEND | OFlag::O_CREAT,
-                Mode::S_IWUSR,
+                Mode::S_IWUSR | Mode::S_IRUSR,
             )
             .unwrap();
             dup2_stdout(&fd)?;
