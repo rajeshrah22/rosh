@@ -4,10 +4,12 @@ use std::io::Write;
 
 pub mod ast;
 pub mod exec;
+pub mod job;
 pub mod lexer;
 pub mod parser;
 
-use exec::Executor;
+use exec::exec;
+use exec::init_shell;
 use lexer::Lexer;
 use parser::Parser;
 
@@ -29,13 +31,16 @@ fn main() -> std::io::Result<()> {
             continue;
         }
 
+        init_shell();
+
         let lex = Lexer::lex(buffer.as_str());
         let mut parse = Parser::new(lex);
         let ast = parse.parse();
-        let executor = Executor::new();
+
         if ast.is_ok() {
             let ast = ast.unwrap();
-            executor.exec(&ast);
+            dbg!(&ast);
+            exec(&ast);
         } else if let Err(e) = ast {
             println!("{}", e.as_str());
         }

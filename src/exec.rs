@@ -5,8 +5,13 @@
 // TODO: convert other iterative code to more rust idiomatic code.
 // TODO: Fix warnings
 // TODO: Rust method vs function
+// TODO: Set default sane terminal attributes somehow
 use nix::fcntl::OFlag;
 use nix::fcntl::open;
+use nix::sys::signal::SigHandler;
+use nix::sys::signal::Signal;
+use nix::sys::signal::kill;
+use nix::sys::signal::signal;
 use nix::sys::stat::Mode;
 use nix::sys::wait::waitpid;
 use nix::unistd::ForkResult;
@@ -15,30 +20,75 @@ use nix::unistd::dup2_stdin;
 use nix::unistd::dup2_stdout;
 use nix::unistd::execvp;
 use nix::unistd::fork;
+use nix::unistd::getpgrp;
+use nix::unistd::getpid;
 use nix::unistd::pipe;
+use nix::unistd::setpgid;
+use nix::unistd::tcgetpgrp;
+use nix::unistd::tcsetpgrp;
 use std::ffi::CString;
+use std::io::IsTerminal;
+use std::io::stdin;
 use std::os::fd::AsRawFd;
 use std::os::fd::OwnedFd;
 
 use crate::ast::Redirect;
 use crate::ast::{Program, Statement};
 
-pub struct Executor {
-    return_code: u64,
+fn ignore_interactive_signals() {
+    unsafe {
+        signal(Signal::SIGSTOP, SigHandler::SigIgn).unwrap();
+        signal(Signal::SIGINT, SigHandler::SigIgn).unwrap();
+        signal(Signal::SIGQUIT, SigHandler::SigIgn).unwrap();
+        signal(Signal::SIGCHLD, SigHandler::SigIgn).unwrap();
+        signal(Signal::SIGTTOU, SigHandler::SigIgn).unwrap();
+        signal(Signal::SIGTTIN, SigHandler::SigIgn).unwrap();
+    };
 }
 
-impl Executor {
-    pub fn new() -> Self {
-        Self { return_code: 0 }
-    }
+fn default_signal_handlers() {
+    unsafe {
+        signal(Signal::SIGSTOP, SigHandler::SigDfl).unwrap();
+        signal(Signal::SIGINT, SigHandler::SigDfl).unwrap();
+        signal(Signal::SIGQUIT, SigHandler::SigDfl).unwrap();
+        signal(Signal::SIGCHLD, SigHandler::SigDfl).unwrap();
+        signal(Signal::SIGTTOU, SigHandler::SigDfl).unwrap();
+        signal(Signal::SIGTTIN, SigHandler::SigDfl).unwrap();
+    };
+}
 
-    pub fn exec(&self, ast: &Program) -> u64 {
-        let statements = &ast.statements;
-        statements.iter().for_each(|stmt| {
-            exec_statement(stmt);
-        });
-        return 0;
+pub fn init_shell() {
+    let is_interactive = stdin().is_terminal();
+
+    if is_interactive {
+        let mut term_pgid = { tcgetpgrp(stdin()) }.unwrap();
+        let mut shell_pgid = getpgrp();
+
+        // loop until we are in the foreground
+        loop {
+            if term_pgid == shell_pgid {
+                break;
+            }
+
+            kill(shell_pgid, Signal::SIGTTIN).unwrap();
+            term_pgid = tcgetpgrp(stdin()).unwrap();
+            shell_pgid = getpgrp();
+        }
+
+        ignore_interactive_signals();
+
+        shell_pgid = getpid();
+        setpgid(shell_pgid, shell_pgid).unwrap();
+        tcsetpgrp(stdin(), shell_pgid).unwrap();
     }
+}
+
+pub fn exec(ast: &Program) -> u64 {
+    let statements = &ast.statements;
+    statements.iter().for_each(|stmt| {
+        exec_statement(stmt);
+    });
+    return 0;
 }
 
 fn apply_redirect(r: &Redirect) -> Result<(), nix::Error> {
