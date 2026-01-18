@@ -4,7 +4,6 @@
 // TODO: What type should Error be? How to return the error code from a execvp function?
 // TODO: convert other iterative code to more rust idiomatic code.
 // TODO: Fix warnings
-// TODO: Rust method vs function
 // TODO: Set default sane terminal attributes somehow
 use nix::fcntl::OFlag;
 use nix::fcntl::open;
@@ -91,21 +90,26 @@ fn do_bg() {}
 
 // 1. Put the process into the process group
 //    and give process group the terminal if appropriate. This has to be done by both the shell and
-//    appropriate child processes.
+//    appropriate child processes. ()
 // 2. set signal handlers to default (/)
 // 3. Set stdio/stdin of processes (redirects) (/)
 // 4. Execvp the process (/)
 fn launch_process(cmd: &Command, pgid: Pid, foreground: bool) -> Result<(), nix::Error> {
     if stdin().is_terminal() {
         let pid = getpid();
+        // if pgid is 0, create new group with this pid as leader
+        // Otherwise, join the specified group. Both parent and child call this to handle race conditions.
         if pgid.as_raw() == 0 {
-            setpgid(pid, pid).unwrap();
+            setpgid(pid, pid)?;
         } else {
-            setpgid(pid, pgid).unwrap();
+            setpgid(pid, pgid)?;
         }
 
         if foreground {
-            tcsetpgrp(stdin(), pgid).unwrap();
+            // If we created a new group (pgid was 0), use pid for terminal control
+            // Otherwise use the provided pgid
+            let terminal_pgid = if pgid.as_raw() == 0 { pid } else { pgid };
+            tcsetpgrp(stdin(), terminal_pgid)?;
         }
         default_signal_handlers();
     }
@@ -129,15 +133,15 @@ fn launch_process(cmd: &Command, pgid: Pid, foreground: bool) -> Result<(), nix:
 // 1. Set up pipes ()
 // 2. Fork the child process:
 //    - Child: launch_process ()
-//    - Parent: set pgid of the child process to ... TODO: Think about this
-// 3. Cleanup after your pipes TODO: make sure
+//    - Parent: set pgid of the child process to ensure it's in the group (handles race condition)
+// 3. Cleanup after your pipes
 //
 // Then wait for jobs to complete or put in foreground or background
-// TODO: Are we doing right ownership of FDs?
 fn launch_job(stmt: &Statement) -> Result<(), nix::Error> {
     let mut prev_read: Option<OwnedFd> = None;
     let mut children = Vec::new();
-    let pgid = getpgid(None).unwrap();
+    // Start with pgid = 0, meaning "create new group, first child will be leader"
+    let mut pgid = Pid::from_raw(0);
 
     for (i, cmd) in stmt.pipeline.commands.iter().enumerate() {
         // setup pipes
@@ -161,10 +165,25 @@ fn launch_job(stmt: &Statement) -> Result<(), nix::Error> {
                 if let Some(r) = read {
                     close(r)?;
                 }
-                launch_process(cmd, pgid, !stmt.background);
+                // launch_process calls execvp on success, which never returns
+                // If it returns an error, something went wrong before execvp
+                if let Err(e) = launch_process(cmd, pgid, !stmt.background) {
+                    eprintln!("Failed to launch process: {}", e);
+                    std::process::exit(1);
+                }
+                // This should never be reached since execvp replaces the process
+                unreachable!();
             }
             ForkResult::Parent { child, .. } => {
-                // TODO: set proper pgid
+                // Set the child's process group. Both parent and child call setpgid to handle
+                // race conditions - whoever gets there first wins.
+                if pgid.as_raw() == 0 {
+                    // First child becomes the process group leader
+                    pgid = child;
+                }
+                // Ensure child is in the process group (handles race if child already called setpgid)
+                setpgid(child, pgid)?;
+
                 children.push(child);
 
                 // cleanup after pipes
