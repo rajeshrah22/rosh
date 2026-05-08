@@ -32,6 +32,7 @@ pub struct Program {
 #[derive(Debug)]
 pub struct Statement {
     pub pipeline: Commands,
+    pub background: bool,
 }
 
 #[derive(Debug)]
